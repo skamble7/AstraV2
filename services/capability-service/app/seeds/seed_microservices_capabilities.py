@@ -1,42 +1,12 @@
 # app/seeds/seed_microservices_capabilities.py
 from __future__ import annotations
 
-import inspect
 import logging
 
 from app.models import GlobalCapabilityCreate, LlmExecution
 from app.services import CapabilityService
 
 log = logging.getLogger("app.seeds.microservices_capabilities")
-
-
-async def _try_wipe_all(svc: CapabilityService) -> bool:
-    """
-    Best-effort collection wipe without relying on list_all().
-    Tries common method names; returns True if any succeeded.
-    """
-    candidates = [
-        "delete_all",
-        "purge_all",
-        "purge",
-        "truncate",
-        "clear",
-        "reset",
-        "drop_all",
-        "wipe_all",
-    ]
-    for name in candidates:
-        method = getattr(svc, name, None)
-        if callable(method):
-            try:
-                result = method()
-                if inspect.isawaitable(result):
-                    await result
-                log.info("[capability.seeds.microservices] wiped existing via CapabilityService.%s()", name)
-                return True
-            except Exception as e:
-                log.warning("[capability.seeds.microservices] %s() failed: %s", name, e)
-    return False
 
 
 def _llm_cap(
@@ -106,16 +76,13 @@ async def seed_microservices_capabilities() -> None:
 
     Notes:
     - cap.asset.fetch_raina_input is reused and is seeded elsewhere (do not duplicate here).
+    - cap.observability.define_spec is shared and seeded in the data-pipeline capability seeder.
     - This file seeds both LLM-based capabilities and the MCP-based guidance document capability.
     """
     log.info("[capability.seeds.microservices] Begin")
 
     svc = CapabilityService()
-
-    # Optional wipe (best-effort; falls back to replace-by-id below)
-    wiped = await _try_wipe_all(svc)
-    if not wiped:
-        log.info("[capability.seeds.microservices] No wipe method found; proceeding with replace-by-id")
+    log.info("[capability.seeds.microservices] Using replace-by-id only")
 
     targets: list[GlobalCapabilityCreate] = [
         # ---- Domain decomposition ----
@@ -183,13 +150,6 @@ async def seed_microservices_capabilities() -> None:
             "Defines identity, edge security, service-to-service trust, data protection, and mitigations using service inventory, API contracts, and inputs.",
             ["cam.security.microservices_security_architecture"],
             tags=["astra", "raina", "microservices", "security"],
-        ),
-        _llm_cap(
-            "cap.observability.define_spec",
-            "Define Microservices Observability Spec",
-            "Defines logs/metrics/traces, SLOs, and alerting using service inventory and interaction matrix.",
-            ["cam.observability.microservices_observability_spec"],
-            tags=["astra", "raina", "microservices", "observability"],
         ),
         _llm_cap(
             "cap.deployment.define_topology",

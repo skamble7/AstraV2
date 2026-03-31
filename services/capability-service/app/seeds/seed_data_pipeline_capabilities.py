@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import inspect
 from datetime import datetime
 
 from app.models import (
@@ -14,29 +13,6 @@ from app.models import (
 from app.services import CapabilityService
 
 log = logging.getLogger("app.seeds.data_pipeline_capabilities")
-
-
-async def _try_wipe_all(svc: CapabilityService) -> bool:
-    """
-    Best-effort collection wipe without relying on list_all().
-    Tries common method names; returns True if any succeeded.
-    """
-    candidates = [
-        "delete_all", "purge_all", "purge", "truncate", "clear",
-        "reset", "drop_all", "wipe_all"
-    ]
-    for name in candidates:
-        method = getattr(svc, name, None)
-        if callable(method):
-            try:
-                result = method()
-                if inspect.isawaitable(result):
-                    await result
-                log.info("[capability.seeds.data-pipeline] wiped existing via CapabilityService.%s()", name)
-                return True
-            except Exception as e:
-                log.warning("[capability.seeds.data-pipeline] %s() failed: %s", name, e)
-    return False
 
 
 def _llm_cap(
@@ -100,11 +76,7 @@ async def seed_capabilities() -> None:
     log.info("[capability.seeds.data-pipeline] Begin")
 
     svc = CapabilityService()
-
-    # Optional wipe (best-effort; falls back to replace-by-id below)
-    wiped = await _try_wipe_all(svc)
-    if not wiped:
-        log.info("[capability.seeds.data-pipeline] No wipe method found; proceeding with replace-by-id")
+    log.info("[capability.seeds.data-pipeline] Using replace-by-id only")
 
     targets: list[GlobalCapabilityCreate] = [
         # ---- NEW MCP capability ----
