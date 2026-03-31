@@ -1,0 +1,16 @@
+[project]
+name = "astra-capability-service"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "pydantic>=2.8",
+  "motor>=3.5",
+  "orjson>=3.10",
+  "aio-pika>=9.4",
+  "mcp>=1.15,<2",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

@@ -1,0 +1,17 @@
+Metadata-Version: 2.4
+Name: conductor-core
+Version: 0.1.0
+Summary: Shared execution nodes, LLM adapters, and models for ASTRA conductor agents
+Requires-Python: >=3.11
+Requires-Dist: pydantic>=2.8
+Requires-Dist: fastjsonschema>=2.20.0
+Requires-Dist: jsonschema>=4.22
+Requires-Dist: tenacity>=9.0
+Requires-Dist: polyllm @ git+https://github.com/skamble7/platform-libraries.git@polyllm-v0.1.10#subdirectory=libs/polyllm
+Requires-Dist: langchain-openai>=0.2
+Requires-Dist: langchain-google-genai>=2.0
+Requires-Dist: langchain-aws>=0.2
+Requires-Dist: langgraph>=0.2
+Requires-Dist: mcp<2,>=1.15
+Requires-Dist: langchain-mcp-adapters>=0.1.0
+Requires-Dist: langchain-core>=0.3.6

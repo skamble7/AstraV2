@@ -1,0 +1,223 @@
+{
+  "inputs": {
+    "avc": {
+      "vision": [
+        "Modernize rail freight billing into a modular, scalable architecture that produces accurate charges and invoices consistently across all shipments.",
+        "Enable transparent, explainable billing (tariff selection, distance validation, surcharge and discount breakdown) with end-to-end auditability.",
+        "Support high-throughput billing cycles (including batch invoicing) using resilient services and well-defined boundaries without creating a tightly-coupled monolith."
+      ],
+      "problem_statements": [
+        "Pricing outcomes are inconsistent when tariff lookup, distance validation, surcharges, and discounts are scattered across systems or implemented differently in multiple places.",
+        "Tariff records often contain incomplete or invalid distance bands; without strong validation, incorrect tariffs can be applied to shipments.",
+        "Batch invoicing is fragile when failures for one customer interrupt the full run; the process needs fault isolation and recoverability."
+      ],
+      "goals": [
+        {
+          "id": "G1",
+          "text": "Calculate freight charges using validated tariffs and distance bands with deterministic surcharge rules",
+          "metric": "charge accuracy vs expected outcomes"
+        },
+        {
+          "id": "G2",
+          "text": "Apply customer tier and regional discounts consistently with stored discount reasons for explainability",
+          "metric": "discount correctness rate and reason-code completeness"
+        },
+        {
+          "id": "G3",
+          "text": "Generate invoices that aggregate charges for a customer and billing date and compute gross, discount, and net totals",
+          "metric": "invoice generation latency and success rate"
+        },
+        {
+          "id": "G4",
+          "text": "Run batch invoice generation for ACTIVE customers with per-customer fault isolation and complete batch reporting",
+          "metric": "batch completion time and success ratio"
+        },
+        {
+          "id": "G5",
+          "text": "Persist charge components (base, surcharge, discount) for transparent invoice line-item breakdown",
+          "metric": "percentage of charges with full component breakdown"
+        }
+      ],
+      "non_functionals": [
+        {
+          "type": "performance",
+          "target": "Charge calculation under 200ms p95 per shipment (excluding external distance lookup); invoice generation under 2s p95 per customer for typical volumes"
+        },
+        {
+          "type": "scalability",
+          "target": "Scale calculation and invoice services horizontally; batch invoicing supports thousands of customers with controlled parallelism"
+        },
+        {
+          "type": "reliability",
+          "target": "Idempotent operations for charge and invoice creation; retries with backoff; batch continues on per-customer failures"
+        },
+        {
+          "type": "consistency",
+          "target": "Deterministic pricing and discount rules with stored references (tariffId, reason codes) enabling reproducible outcomes"
+        },
+        {
+          "type": "security",
+          "target": "Encryption in transit and at rest; access control for tariff and billing operations; audit logging for pricing-affecting changes"
+        },
+        {
+          "type": "observability",
+          "target": "Distributed tracing with correlation IDs, service metrics (tariff hit/miss, discount applied, invoice results) and structured logs"
+        }
+      ],
+      "constraints": [
+        "Tariff lookup must match origin, destination, and wagon type exactly; only tariffs whose distance band covers shipment distance may be used.",
+        "Surcharge is fixed at 5% of the base amount (base rate × distance).",
+        "Discount policy: Tier A = 10%, Tier B = 5%, Region WST = additional 2%; combine tier and regional discounts when both apply.",
+        "Invoices must be stored in currency INR with gross, discount, net, and discount reason.",
+        "Batch invoice generation must continue processing remaining customers even if individual customers fail."
+      ],
+      "assumptions": [
+        "Shipment distance is available on the shipment record or can be resolved deterministically from origin and destination.",
+        "Tariff records contain required fields including base rate, currency, DIST-MIN, and DIST-MAX.",
+        "Customer records include tier (A/B) and region code (e.g., WST) and a status field (ACTIVE/INACTIVE).",
+        "Charge and invoice creation operations are idempotent to prevent duplicates during retries."
+      ],
+      "context": {
+        "domain": "Rail Freight Billing",
+        "actors": [
+          "BillingAnalyst",
+          "TariffAdmin",
+          "OperationsUser",
+          "FinanceSystem"
+        ]
+      },
+      "success_criteria": [
+        { "kpi": "charge_accuracy", "target": ">= 99.9% charges match expected tariff/surcharge outcomes" },
+        { "kpi": "discount_accuracy", "target": ">= 99.9% discounts match tier/region policy with reason codes stored" },
+        { "kpi": "invoice_success_rate", "target": ">= 99.5% invoices generated successfully per cycle" },
+        { "kpi": "batch_success_ratio", "target": ">= 98% customers invoiced successfully per batch run with failures logged" },
+        { "kpi": "audit_completeness", "target": "100% charges store tariff reference and component breakdown; 100% invoices store gross/discount/net and discount reason" }
+      ]
+    },
+    "fss": {
+      "stories": [
+        {
+          "key": "RFB-101",
+          "title": "Calculate Rail Freight Charges with Tariff Lookup",
+          "description": [
+            "As a Billing Analyst, I want the system to automatically calculate rail freight charges based on tariff lookup so that charges are accurate and consistent across all shipments.",
+            "The ChargeCalculationService queries tariff storage using origin, destination, and wagon type and validates distance applicability using DIST-MIN/DIST-MAX.",
+            "If a valid tariff is found, it computes base = baseRate × distance and applies a fixed 5% surcharge, then persists a Charge with tariff reference."
+          ],
+          "acceptance_criteria": [
+            "Given a shipment with origin, destination, and wagon type, when the ChargeCalculationService is called, then it should query the tariff database using these criteria.",
+            "Given a valid tariff is found with distance range covering the shipment distance, when calculating charges, then the system should multiply the base rate by distance and apply a 5% surcharge.",
+            "Given no applicable tariff is found for the route and wagon type, when calculating charges, then the system should return an error message 'NO_TARIFF_FOUND'.",
+            "Given a calculated charge, when the calculation is complete, then the system should create a Charge entity with gross amount, currency, and tariff reference.",
+            "Given distance validation is required, when checking tariff applicability, then the system should verify the shipment distance falls within the tariff's DIST-MIN and DIST-MAX range."
+          ],
+          "tags": ["domain:billing", "function:charge-calc", "actor:Billing_Analyst"]
+        },
+        {
+          "key": "RFB-102",
+          "title": "Apply Customer Discounts to Charges",
+          "description": [
+            "As a Billing Analyst, I want the system to automatically apply customer-specific discounts to charges so that pricing reflects customer tier and regional policies.",
+            "Discount rules: tier A = 10%, tier B = 5%, region WST = additional 2%. When multiple discounts apply, combine tier and regional discounts.",
+            "The system stores discount amount and a reason code on the charge for explainability."
+          ],
+          "acceptance_criteria": [
+            "Given a customer with tier 'A', when applying discounts, then the system should apply a 10% tier discount to the gross amount.",
+            "Given a customer with tier 'B', when applying discounts, then the system should apply a 5% tier discount to the gross amount.",
+            "Given a customer in the 'WST' region, when applying discounts, then the system should apply an additional 2% regional discount.",
+            "Given discount calculations are complete, when updating the charge, then the system should store both the discount amount and reason code.",
+            "Given multiple discounts apply, when calculating final discount, then the system should combine tier and regional discounts appropriately."
+          ],
+          "tags": ["domain:billing", "function:discount", "actor:Billing_Analyst"]
+        },
+        {
+          "key": "RFB-103",
+          "title": "Generate Individual Customer Invoice",
+          "description": [
+            "As a Billing Analyst, I want to generate an invoice for a specific customer and date so that all charges for that period are consolidated into a single billing document.",
+            "The invoice aggregates all eligible charges, computes gross, applies customer discounts, and determines net amount.",
+            "Invoice persistence includes generating a unique invoice ID using customer ID and timestamp and storing currency as INR."
+          ],
+          "acceptance_criteria": [
+            "Given a customer ID and invoice date, when generating an invoice, then the system should aggregate all charges for shipments matching those criteria.",
+            "Given aggregated charges, when creating the invoice, then the system should calculate gross amount, apply customer discounts, and determine net amount.",
+            "Given invoice data is prepared, when persisting the invoice, then the system should generate a unique invoice ID using customer ID and timestamp.",
+            "Given a completed invoice, when saving to database, then the system should store invoice with currency 'INR', gross amount, discount amount, net amount, and discount reason.",
+            "Given invoice generation is successful, when returning results, then the system should provide the invoice ID and net amount to the calling process."
+          ],
+          "tags": ["domain:billing", "function:invoicing", "actor:Billing_Analyst"]
+        },
+        {
+          "key": "RFB-104",
+          "title": "Process Batch Invoice Generation for Active Customers",
+          "description": [
+            "As a Billing Analyst, I want to run batch invoice generation for all active customers so that invoices are created efficiently for the billing cycle.",
+            "The batch process reads all customers with ACTIVE status, generates invoices per customer, captures results, and persists an InvoiceBatch summary.",
+            "Errors for individual customers are logged and do not stop the batch."
+          ],
+          "acceptance_criteria": [
+            "Given a batch invoice process is initiated, when processing customers, then the system should read all customers with 'ACTIVE' status from the database.",
+            "Given an active customer record, when processing for invoice generation, then the system should call the invoice generation service for that customer.",
+            "Given invoice generation completes for a customer, when recording results, then the system should capture the invoice number, customer ID, and net amount.",
+            "Given batch processing is complete, when generating output, then the system should create an InvoiceBatch entity with batch metadata including start time, end time, and status.",
+            "Given any invoice generation fails, when handling errors, then the system should log the error but continue processing remaining customers."
+          ],
+          "tags": ["domain:billing", "function:batch", "actor:Billing_Analyst"]
+        },
+        {
+          "key": "RFB-105",
+          "title": "Calculate and Store Charge Components",
+          "description": [
+            "As a Billing Analyst, I want the system to break down charges into components so that invoice line items show detailed charge breakdown for transparency.",
+            "For a calculated freight charge, create components for BASE and SURCHARGE; when discount is applied, create a DISCOUNT component with a negative amount.",
+            "All components must reference the parent Charge via ChargeId."
+          ],
+          "acceptance_criteria": [
+            "Given a calculated freight charge, when creating charge components, then the system should create separate ChargeComponent records for base rate and surcharge.",
+            "Given a base rate calculation, when storing the component, then the system should create a ChargeComponent with type 'BASE', amount, and currency.",
+            "Given a 5% surcharge is applied, when storing the surcharge component, then the system should create a ChargeComponent with type 'SURCHARGE', calculated amount, and currency.",
+            "Given discount is applied, when storing discount information, then the system should create a ChargeComponent with type 'DISCOUNT', negative amount, and currency.",
+            "Given all components are created, when linking to parent charge, then each ChargeComponent should reference the parent Charge via ChargeId."
+          ],
+          "tags": ["domain:billing", "function:components", "actor:Billing_Analyst"]
+        },
+        {
+          "key": "RFB-106",
+          "title": "Validate Tariff Data and Distance Ranges",
+          "description": [
+            "As a Billing Analyst, I want the system to validate tariff data and distance ranges so that only applicable tariffs are used for charge calculations.",
+            "Tariff validation matches origin, destination, and wagon type exactly and selects tariffs only if shipment distance is within DIST-MIN and DIST-MAX.",
+            "Tariffs missing required fields (base rate or distance ranges) are rejected; if no valid tariff remains, return a validation error with details."
+          ],
+          "acceptance_criteria": [
+            "Given a tariff lookup request, when searching for tariffs, then the system should match on origin, destination, and wagon type exactly.",
+            "Given multiple tariffs match the route criteria, when validating distance, then the system should select only tariffs where shipment distance falls within DIST-MIN and DIST-MAX.",
+            "Given distance validation fails for all tariffs, when no valid tariff is found, then the system should return a validation error with details.",
+            "Given tariff data is incomplete, when validating tariff records, then the system should reject tariffs missing required fields like base rate or distance ranges.",
+            "Given valid tariff is found, when proceeding with calculation, then the system should use the base rate from the validated tariff record."
+          ],
+          "tags": ["domain:billing", "function:tariff-validation", "actor:Billing_Analyst"]
+        }
+      ]
+    },
+    "pss": {
+      "paradigm": "Microservices",
+      "style": [
+        "Domain-driven design with bounded contexts (Tariff, Charge, Discount/Policy, Invoice, Batch Orchestration)",
+        "Synchronous request/response APIs for commands (calculate charge, apply discounts, generate invoice) with idempotency keys",
+        "Event-driven communication for downstream notifications and audit trails (e.g., charge calculated, invoice generated)",
+        "Database-per-service with well-defined ownership; avoid cross-service writes; use API composition where needed",
+        "Resilient patterns: retries with backoff, circuit breakers, outbox/inbox for reliable event publishing and consumption",
+        "Batch orchestration with parallel workers, per-customer fault isolation, and resumable runs"
+      ],
+      "tech_stack": [
+        "API gateway for routing, auth, throttling (Kong / NGINX / cloud APIM equivalents)",
+        "Microservices runtime (FastAPI / Spring Boot / .NET) with containerization (Docker) and orchestration (Kubernetes)",
+        "Service-owned datastores: PostgreSQL for tariffs/invoices and a service-appropriate store for others (PostgreSQL/MongoDB), depending on access patterns",
+        "Message broker for asynchronous events (RabbitMQ or Kafka)",
+        "Observability: OpenTelemetry tracing, centralized logs, metrics (Prometheus/Grafana or cloud equivalents)",
+        "Config and secrets management (Vault / AWS SSM / Azure Key Vault) and CI/CD pipelines"
+      ]
+    }
+  }
+}
