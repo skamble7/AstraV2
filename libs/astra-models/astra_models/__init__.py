@@ -14,13 +14,9 @@ from astra_models.capability_models import (
 from astra_models.kind_registry_models import *  # noqa: F401, F403
 from astra_models.artifact_models import *  # noqa: F401, F403
 from astra_models.skill_models import (
-    RetryConfig,
-    SkillMcpExecution,
-    SkillLlmExecution,
-    SkillExecution,
     SkillPlaybookStep,
     SkillPlaybook,
-    SkillStatus,
+    SkillManifestEntry,
     GlobalSkill,
     GlobalSkillCreate,
     GlobalSkillUpdate,
@@ -44,13 +40,9 @@ __all__ = [
     "GlobalCapabilityCreate",
     "GlobalCapabilityUpdate",
     # skill models
-    "RetryConfig",
-    "SkillMcpExecution",
-    "SkillLlmExecution",
-    "SkillExecution",
     "SkillPlaybookStep",
     "SkillPlaybook",
-    "SkillStatus",
+    "SkillManifestEntry",
     "GlobalSkill",
     "GlobalSkillCreate",
     "GlobalSkillUpdate",

@@ -4,7 +4,7 @@ from typing import List, Optional, Tuple
 
 from app.dal.skill_dal import SkillDAL
 from app.events import get_bus
-from app.models import GlobalSkill, GlobalSkillCreate, GlobalSkillUpdate
+from app.models import GlobalSkill, GlobalSkillCreate, GlobalSkillUpdate, SkillManifestEntry
 
 
 class SkillService:
@@ -17,7 +17,7 @@ class SkillService:
             await get_bus().publish(
                 service="skill-registry",
                 event="skill.created",
-                payload={"name": skill.name, "produces_kinds": skill.produces_kinds, "by": actor},
+                payload={"name": skill.name, "domain": skill.domain, "by": actor},
             )
         except Exception:
             pass
@@ -36,7 +36,7 @@ class SkillService:
                 await get_bus().publish(
                     service="skill-registry",
                     event="skill.updated",
-                    payload={"name": skill.name, "produces_kinds": skill.produces_kinds, "by": actor},
+                    payload={"name": skill.name, "by": actor},
                 )
             except Exception:
                 pass
@@ -58,26 +58,14 @@ class SkillService:
     async def search(
         self,
         *,
-        tag: Optional[str] = None,
-        produces_kind: Optional[str] = None,
-        mode: Optional[str] = None,
-        status: Optional[str] = None,
         q: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
     ) -> Tuple[List[GlobalSkill], int]:
-        return await self.dal.search(
-            tag=tag,
-            produces_kind=produces_kind,
-            mode=mode,
-            status=status,
-            q=q,
-            limit=limit,
-            offset=offset,
-        )
+        return await self.dal.search(q=q, limit=limit, offset=offset)
 
-    async def get_published_manifest(self) -> List[GlobalSkill]:
-        return await self.dal.get_published_manifest()
+    async def get_manifest(self) -> List[SkillManifestEntry]:
+        return await self.dal.get_manifest()
 
     async def list_all_names(self) -> List[str]:
         return await self.dal.list_all_names()

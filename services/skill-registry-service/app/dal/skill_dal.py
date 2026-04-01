@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from pymongo import ReturnDocument
 
 from app.db.mongo import get_db
-from app.models import GlobalSkill, GlobalSkillCreate, GlobalSkillUpdate, SkillStatus
+from app.models import GlobalSkill, GlobalSkillCreate, GlobalSkillUpdate, SkillManifestEntry
 
 
 def _utcnow() -> datetime:
@@ -66,23 +66,11 @@ class SkillDAL:
     async def search(
         self,
         *,
-        tag: Optional[str] = None,
-        produces_kind: Optional[str] = None,
-        mode: Optional[str] = None,  # "mcp" | "llm"
-        status: Optional[str] = None,
         q: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
     ) -> Tuple[List[GlobalSkill], int]:
         filt: Dict[str, Any] = {}
-        if tag:
-            filt["tags"] = tag
-        if produces_kind:
-            filt["produces_kinds"] = produces_kind
-        if mode in ("mcp", "llm"):
-            filt["execution.mode"] = mode
-        if status:
-            filt["status"] = status
         if q:
             filt["$or"] = [
                 {"name": {"$regex": q, "$options": "i"}},
@@ -99,10 +87,18 @@ class SkillDAL:
         items = [GlobalSkill.model_validate(d) async for d in cursor]
         return items, total
 
-    async def get_published_manifest(self) -> List[GlobalSkill]:
-        """Return all published skills — used by Astra Agent to build its tool registry."""
-        cursor = self.col.find({"status": SkillStatus.published.value}).sort("name", 1)
-        return [GlobalSkill.model_validate(d) async for d in cursor]
+    async def get_manifest(self) -> List[SkillManifestEntry]:
+        """Return lightweight manifest entries for all registered skills."""
+        cursor = self.col.find({}, {"name": 1, "description": 1, "domain": 1, "is_artifact_skill": 1, "_id": 0}).sort("name", 1)
+        return [
+            SkillManifestEntry(
+                name=d["name"],
+                description=d["description"],
+                domain=d["domain"],
+                is_artifact_skill=d["is_artifact_skill"],
+            )
+            async for d in cursor
+        ]
 
     async def list_all_names(self) -> List[str]:
         cursor = self.col.find({}, {"name": 1, "_id": 0}).sort("name", 1)

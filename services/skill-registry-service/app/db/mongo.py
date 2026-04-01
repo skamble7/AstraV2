@@ -23,12 +23,8 @@ def get_db() -> AsyncIOMotorDatabase:
 async def init_indexes() -> None:
     db = get_db()
 
-    # skills
+    # skills — lean schema: only name (unique) and full-text on name+description
     await db.skills.create_index("name", unique=True)
-    await db.skills.create_index("tags")
-    await db.skills.create_index("produces_kinds")
-    await db.skills.create_index("status")
-    await db.skills.create_index("execution.mode")
     try:
         await db.skills.create_index([("name", "text"), ("description", "text")])
     except Exception:

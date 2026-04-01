@@ -1,56 +1,15 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Annotated, Dict, List, Literal, Optional, Union
+from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
-
-from astra_models.capability_models import AuthAlias
+from pydantic import BaseModel, Field, field_validator
 
 
 # ─────────────────────────────────────────────────────────────
-# Retry config
-# ─────────────────────────────────────────────────────────────
-
-class RetryConfig(BaseModel):
-    max_attempts: int = 3
-    backoff_ms: int = 250
-    jitter_ms: int = 50
-
-
-# ─────────────────────────────────────────────────────────────
-# Execution — flat structure (ADR-011)
-# One tool per skill; base_url at top level (not nested transport)
-# ─────────────────────────────────────────────────────────────
-
-class SkillMcpExecution(BaseModel):
-    mode: Literal["mcp"]
-    transport: Literal["http", "stdio"] = "http"
-    base_url: str                                           # ${ENV_VAR} substitution supported
-    protocol_path: str = "/mcp"
-    health_path: Optional[str] = None
-    tool_name: str                                          # single string — NOT an array (ADR-011)
-    timeout_sec: int = Field(default=60, ge=1)
-    verify_tls: bool = True
-    retry: RetryConfig = Field(default_factory=RetryConfig)
-    headers: Dict[str, str] = Field(default_factory=dict)
-    auth: AuthAlias = Field(default_factory=AuthAlias)
-
-
-class SkillLlmExecution(BaseModel):
-    mode: Literal["llm"]
-    llm_config_ref: str
-
-
-SkillExecution = Annotated[
-    Union[SkillMcpExecution, SkillLlmExecution],
-    Field(discriminator="mode"),
-]
-
-
-# ─────────────────────────────────────────────────────────────
-# Skill Pack — playbook structures
+# Skill Pack — playbook structures (used by SkillPack)
 # ─────────────────────────────────────────────────────────────
 
 class SkillPlaybookStep(BaseModel):
@@ -62,61 +21,92 @@ class SkillPlaybook(BaseModel):
 
 
 # ─────────────────────────────────────────────────────────────
-# Skill status
+# Manifest cache entry
+# Returned by GET /skills/manifest — no execution detail, no body
 # ─────────────────────────────────────────────────────────────
 
-class SkillStatus(str, Enum):
-    draft = "draft"
-    published = "published"
-    deprecated = "deprecated"
+class SkillManifestEntry(BaseModel):
+    name: str
+    description: str
+    domain: Literal["astra", "general"]
+    is_artifact_skill: bool
 
 
 # ─────────────────────────────────────────────────────────────
-# Global Skill
+# Global Skill — lean MongoDB document
+# All execution detail lives inside skill_md_body frontmatter.
 # ─────────────────────────────────────────────────────────────
 
 class GlobalSkill(BaseModel):
-    name: str = Field(..., description="Stable skill id, e.g. sk.cobol.copybook.parse")
+    name: str = Field(..., description="Stable skill id, e.g. sk.asset.fetch_raina_input")
     description: str
-    execution: SkillExecution
-    produces_kinds: List[str] = Field(default_factory=list)
-    depends_on: List[str] = Field(default_factory=list)
-    tags: List[str] = Field(default_factory=list)
-    status: SkillStatus = SkillStatus.draft
-    version: str = "1.0.0"
-    parameters_schema: Optional[Dict[str, Any]] = None
-    skill_md_body: str = ""             # full SKILL.md markdown body
-    references: Dict[str, str] = Field(default_factory=dict)
+    domain: Literal["astra", "general"] = "astra"
+    is_artifact_skill: bool = True
+    skill_md_body: str             # complete SKILL.md — frontmatter + Markdown body
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+def _validate_frontmatter(v: str) -> str:
+    """Shared frontmatter validator — rules 2, 3, 4."""
+    # Rule 2: must start with --- and have a closing ---
+    if not re.match(r"^---\s*\n", v):
+        raise ValueError(
+            "skill_md_body must begin with YAML frontmatter delimited by '---'"
+        )
+    rest = v[4:]
+    close = re.search(r"\n---", rest)
+    if not close:
+        raise ValueError("skill_md_body frontmatter must be closed with '---'")
+
+    fm = rest[: close.start()]
+
+    # Rule 3: execution.tool_name must be a string, not an array
+    tn_match = re.search(r"^\s*tool_name\s*:\s*(.+)$", fm, re.MULTILINE)
+    if tn_match:
+        value = tn_match.group(1).strip()
+        if value.startswith("["):
+            raise ValueError("execution.tool_name must be a string, not an array")
+    # Block-sequence form: tool_name:\n  - item
+    if re.search(r"^\s*tool_name\s*:\s*\n\s+-", fm, re.MULTILINE):
+        raise ValueError("execution.tool_name must be a string, not an array")
+
+    return v
+
+
 class GlobalSkillCreate(BaseModel):
     name: str
     description: str
-    execution: SkillExecution
-    produces_kinds: List[str] = Field(default_factory=list)
-    depends_on: List[str] = Field(default_factory=list)
-    tags: List[str] = Field(default_factory=list)
-    status: SkillStatus = SkillStatus.draft
-    version: str = "1.0.0"
-    parameters_schema: Optional[Dict[str, Any]] = None
-    skill_md_body: str = ""
-    references: Dict[str, str] = Field(default_factory=dict)
+    domain: Literal["astra", "general"] = "astra"
+    is_artifact_skill: bool = True
+    skill_md_body: str
+
+    @field_validator("name")
+    @classmethod
+    def name_must_start_with_sk(cls, v: str) -> str:
+        # Rule 1
+        if not v.startswith("sk."):
+            raise ValueError("Skill name must start with 'sk.'")
+        return v
+
+    @field_validator("skill_md_body")
+    @classmethod
+    def body_must_have_valid_frontmatter(cls, v: str) -> str:
+        return _validate_frontmatter(v)
 
 
 class GlobalSkillUpdate(BaseModel):
+    # domain and is_artifact_skill are intentionally absent — immutable after creation (Rule 5)
     description: Optional[str] = None
-    execution: Optional[SkillExecution] = None
-    produces_kinds: Optional[List[str]] = None
-    depends_on: Optional[List[str]] = None
-    tags: Optional[List[str]] = None
-    status: Optional[SkillStatus] = None
-    version: Optional[str] = None
-    parameters_schema: Optional[Dict[str, Any]] = None
     skill_md_body: Optional[str] = None
-    references: Optional[Dict[str, str]] = None
+
+    @field_validator("skill_md_body")
+    @classmethod
+    def body_must_have_valid_frontmatter(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            return _validate_frontmatter(v)
+        return v
 
 
 # ─────────────────────────────────────────────────────────────

@@ -1,11 +1,7 @@
 from astra_models.skill_models import (
-    RetryConfig,
-    SkillMcpExecution,
-    SkillLlmExecution,
-    SkillExecution,
     SkillPlaybookStep,
     SkillPlaybook,
-    SkillStatus,
+    SkillManifestEntry,
     GlobalSkill,
     GlobalSkillCreate,
     GlobalSkillUpdate,
@@ -16,13 +12,9 @@ from astra_models.skill_models import (
 )
 
 __all__ = [
-    "RetryConfig",
-    "SkillMcpExecution",
-    "SkillLlmExecution",
-    "SkillExecution",
     "SkillPlaybookStep",
     "SkillPlaybook",
-    "SkillStatus",
+    "SkillManifestEntry",
     "GlobalSkill",
     "GlobalSkillCreate",
     "GlobalSkillUpdate",

@@ -6,27 +6,26 @@ from typing import List
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.models import GlobalSkill
+from app.models import SkillManifestEntry
 from app.services import SkillService
 
-router = APIRouter(prefix="/manifest", tags=["manifest"])
+router = APIRouter(prefix="/skills", tags=["manifest"])
 svc = SkillService()
 
 
 class SkillManifest(BaseModel):
-    skills: List[GlobalSkill]
+    skills: List[SkillManifestEntry]
     generated_at: datetime
     count: int
 
 
-@router.get("/skills", response_model=SkillManifest)
+@router.get("/manifest", response_model=SkillManifest)
 async def get_skill_manifest():
     """
-    Returns all published skills as a manifest.
+    Returns all registered skills as a lightweight manifest (no SKILL.md body).
     Used by the Astra Agent to build its tool registry at startup.
-    Only skills with status='published' are included.
     """
-    skills = await svc.get_published_manifest()
+    skills = await svc.get_manifest()
     return SkillManifest(
         skills=skills,
         generated_at=datetime.now(timezone.utc),

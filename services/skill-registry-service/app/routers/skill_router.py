@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from app.models import GlobalSkill, GlobalSkillCreate, GlobalSkillUpdate
 from app.services import SkillService
 
-router = APIRouter(prefix="/skill", tags=["skills"])
+router = APIRouter(prefix="/skills", tags=["skills"])
 svc = SkillService()
 
 
@@ -26,23 +26,11 @@ async def create_skill(payload: GlobalSkillCreate, actor: Optional[str] = None):
 
 @router.get("/search", response_model=List[GlobalSkill])
 async def search_skills(
-    tag: Optional[str] = Query(default=None),
-    produces_kind: Optional[str] = Query(default=None),
-    mode: Optional[str] = Query(default=None, pattern="^(mcp|llm)$"),
-    status: Optional[str] = Query(default=None),
     q: Optional[str] = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ):
-    items, _ = await svc.search(
-        tag=tag,
-        produces_kind=produces_kind,
-        mode=mode,
-        status=status,
-        q=q,
-        limit=limit,
-        offset=offset,
-    )
+    items, _ = await svc.search(q=q, limit=limit, offset=offset)
     return items
 
 
