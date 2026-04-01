@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.models import SessionDocument, SessionCreate, SessionAppend, SessionReplace
+from app.models import SessionDocument, SessionCreate, SessionUpdate, SessionAppend, SessionReplace
 from app.services import SessionService
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -28,6 +28,15 @@ async def list_sessions(
 @router.get("/{session_id}", response_model=SessionDocument)
 async def get_session(session_id: str):
     session = await svc.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session
+
+
+@router.patch("/{session_id}", response_model=SessionDocument)
+async def update_session(session_id: str, body: SessionUpdate):
+    """Rename a session."""
+    session = await svc.update(session_id, body)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     return session

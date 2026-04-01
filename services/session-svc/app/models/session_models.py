@@ -19,6 +19,7 @@ class AnthropicMessage(BaseModel):
 class SessionDocument(BaseModel):
     session_id: str
     workspace_id: str
+    name: Optional[str] = None
     messages: List[AnthropicMessage] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -30,9 +31,18 @@ class SessionCreate(BaseModel):
         default=None,
         description="Caller-supplied session ID. Auto-generated (UUID4) if omitted.",
     )
+    name: Optional[str] = Field(
+        default=None,
+        description="Human-readable conversation name.",
+    )
 
     def effective_session_id(self) -> str:
         return self.session_id or str(uuid.uuid4())
+
+
+class SessionUpdate(BaseModel):
+    """Rename a session."""
+    name: str
 
 
 class SessionAppend(BaseModel):

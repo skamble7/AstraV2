@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from app.dal.session_dal import SessionDAL
 from app.events import get_bus
-from app.models import AnthropicMessage, SessionDocument, SessionCreate
+from app.models import AnthropicMessage, SessionDocument, SessionCreate, SessionUpdate
 
 
 class SessionService:
@@ -28,6 +28,9 @@ class SessionService:
 
     async def list_by_workspace(self, workspace_id: str, limit: int = 50, offset: int = 0) -> List[SessionDocument]:
         return await self.dal.list_by_workspace(workspace_id, limit=limit, offset=offset)
+
+    async def update(self, session_id: str, patch: SessionUpdate) -> Optional[SessionDocument]:
+        return await self.dal.update(session_id, patch)
 
     async def append_messages(self, session_id: str, messages: List[AnthropicMessage]) -> Optional[SessionDocument]:
         return await self.dal.append_messages(session_id, messages)

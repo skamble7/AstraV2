@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 from pymongo import ReturnDocument
 
 from app.db.mongo import get_db
-from app.models import AnthropicMessage, SessionDocument, SessionCreate
+from app.models import AnthropicMessage, SessionDocument, SessionCreate, SessionUpdate
 
 
 def _utcnow() -> datetime:
@@ -29,12 +29,21 @@ class SessionDAL:
         doc: Dict[str, Any] = {
             "session_id": session_id,
             "workspace_id": payload.workspace_id,
+            "name": payload.name,
             "messages": [],
             "created_at": now,
             "updated_at": now,
         }
         await self.col.insert_one(doc)
         return SessionDocument.model_validate(doc)
+
+    async def update(self, session_id: str, patch: SessionUpdate) -> Optional[SessionDocument]:
+        doc = await self.col.find_one_and_update(
+            {"session_id": session_id},
+            {"$set": {"name": patch.name, "updated_at": _utcnow()}},
+            return_document=ReturnDocument.AFTER,
+        )
+        return SessionDocument.model_validate(doc) if doc else None
 
     async def get(self, session_id: str) -> Optional[SessionDocument]:
         doc = await self.col.find_one({"session_id": session_id})
