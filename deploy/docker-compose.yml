@@ -213,3 +213,49 @@ services:
       - astra-artifact-service
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  astra-skill-registry-service:
+    build:
+      context: ..
+      dockerfile: services/skill-registry-service/Dockerfile
+    container_name: astra-skill-registry-service
+    restart: unless-stopped
+    env_file:
+      - ../services/skill-registry-service/.env.example
+    environment:
+      MONGO_URI: ${MONGO_URI:-mongodb://host.docker.internal:27017/}
+      MONGO_DB: ${MONGO_DB:-astra}
+      RABBITMQ_URI: ${RABBITMQ_URI:-amqp://raina:raina@host.docker.internal:5672/}
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-raina.events}
+      EVENTS_ORG: ${EVENTS_ORG:-astra}
+      SERVICE_NAME: skill-registry-service
+      SEED_SKILLS: ${SEED_SKILLS:-1}
+      SEED_SKILLS_DATA_PIPELINE: ${SEED_SKILLS_DATA_PIPELINE:-1}
+      SEED_SKILLS_MICROSERVICES: ${SEED_SKILLS_MICROSERVICES:-1}
+      SEED_SKILL_PACKS_DATA_PIPELINE: ${SEED_SKILL_PACKS_DATA_PIPELINE:-1}
+      SEED_SKILL_PACKS_MICROSERVICES: ${SEED_SKILL_PACKS_MICROSERVICES:-1}
+      SKILL_PACK_SEED_PUBLISH: ${SKILL_PACK_SEED_PUBLISH:-1}
+    ports:
+      - "9028:9028"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  astra-session-svc:
+    build:
+      context: ..
+      dockerfile: services/session-svc/Dockerfile
+    container_name: astra-session-svc
+    restart: unless-stopped
+    env_file:
+      - ../services/session-svc/.env.example
+    environment:
+      MONGO_URI: ${MONGO_URI:-mongodb://host.docker.internal:27017/}
+      MONGO_DB: ${MONGO_DB:-astra}
+      RABBITMQ_URI: ${RABBITMQ_URI:-amqp://raina:raina@host.docker.internal:5672/}
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-raina.events}
+      EVENTS_ORG: ${EVENTS_ORG:-astra}
+      SERVICE_NAME: session-svc
+    ports:
+      - "9029:9029"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

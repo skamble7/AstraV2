@@ -193,17 +193,106 @@ The AI Agent interprets this blueprint, carrying out:
 
 This ensures reproducible, deterministic runs across environments and platforms.
 
+### Skills — Definition
+
+A **Skill** is the execution primitive of the Astra Agent — the TypeScript in-process agent that powers the new Electron desktop frontend. Skills coexist alongside capabilities: they use the same artifact-kinds and the same shared services (artifact-service, workspace-manager-service) but have their own registry, naming convention, and flatter execution model.
+
+Where a Capability is orchestrated by the Python conductor-service through a playbook, a Skill is invoked directly by the Astra Agent on behalf of the user in a conversational session.
+
+| Property | Description | Why it matters |
+|---|---|---|
+| **`name`** | Stable identifier following `sk.<group>.<action>` (e.g., `sk.asset.fetch_raina_input`). The `name` is the primary key — there is no separate numeric `id`. | Provides a human-readable, self-describing, globally unique address for each skill that the Astra Agent can reason about. |
+| **`description`** | Summary of what the skill does. | Surfaced to the Astra Agent’s tool registry so it can select the right skill for a given user request. |
+| **`execution`** | Either a `SkillMcpExecution` or `SkillLlmExecution` structure (discriminated on `mode`). | Declares how to invoke the skill — via an MCP tool or an LLM prompt. |
+| **`produces_kinds`** | Artifact-kind ids (`cam.*`) this skill may produce. | Shared contract with the capability system; enables downstream consumers to understand skill output. |
+| **`depends_on`** | List of other skill names that must run first. | Supports dependency-ordered execution within a skill pack playbook. |
+| **`tags`** | Free-form strings for grouping and search. | Enables the Astra Agent and UI to filter skills by domain or function. |
+| **`status`** | `draft`, `published`, or `deprecated`. | Only `published` skills appear in the manifest returned to the Astra Agent at startup. |
+| **`skill_md_body`** | Full SKILL.md markdown body. | Rich documentation embedded in the skill record itself, surfaced to the Astra Agent as context. |
+| **`parameters_schema`** | Optional JSON Schema for top-level parameters. | Enables validation and UI scaffolding for skill-specific inputs. |
+
+#### Execution Modes
+
+- **`SkillMcpExecution`** — calls a single named tool on an MCP server. The execution config is **flat**: `base_url`, `protocol_path`, `tool_name`, `timeout_sec`, `verify_tls`, `retry`, `headers`, and `auth` are all top-level fields. There is no nested transport discriminated union (unlike `McpExecution` in capabilities). Each skill invokes exactly one MCP tool (ADR-011 — one tool per skill).
+
+- **`SkillLlmExecution`** — executes an LLM prompt. References an LLM configuration via `llm_config_ref` — the same ConfigForge canonical reference pattern used by capability-service and conductor-service.
+
+#### Naming Convention
+
+Skills follow a three-part naming pattern identical in structure to capabilities but with the `sk` prefix:
+
+```
+sk.<group>.<action>
+```
+
+- **`sk`** — designates this as a Skill in the Astra Agent ecosystem.
+- **`<group>`** — domain or functional grouping (e.g., `asset`, `data`, `workflow`, `domain`, `diagram`).
+- **`<action>`** — the operation performed (e.g., `fetch_raina_input`, `discover_logical_model`, `generate_arch`).
+
+#### Relationship to Capabilities
+
+Skills and capabilities are **parallel tracks** — neither replaces the other:
+
+- Capabilities (`cap.*`) are executed by the Python conductor-service via playbooks in a server-side run.
+- Skills (`sk.*`) are executed by the Astra Agent (TypeScript, in-process) in a conversational session.
+- Both share `artifact-service` (kind registry), `workspace-manager-service` (artifact storage), and the same `cam.*` artifact-kind namespace.
+
+---
+
+### Skill Pack — Definition
+
+A **Skill Pack** is a versioned, goal-oriented bundle of skills that organizes and sequences the Astra Agent’s execution — analogous to a Capability Pack, but designed for the conversational skill-execution model.
+
+Like a Capability Pack, a Skill Pack declares:
+- Which skills should run (`skill_ids`)
+- In what order (via a single `playbook`)
+- To achieve what deterministic outcome
+
+#### What a Skill Pack Declares
+
+| Property | Description |
+|---|---|
+| `key` / `version` | Identifies the pack and its semantic version. The composite `key@version` is the pack’s unique id. |
+| `title`, `description` | Human-readable metadata. |
+| `skill_ids` | List of `sk.*` skill names included in this pack. |
+| `agent_skill_ids` | Extra skills available to the Astra Agent for enrichment (e.g., diagram generation). Not part of any playbook step. |
+| `pack_input_id` | Optional reference to a PackInput that defines required inputs. |
+| `playbook` | A **single** `SkillPlaybook` containing ordered steps. Each step has only a `skill_id` reference — no step-level id, name, or description. |
+| `status` | `draft`, `published`, or `archived`. Publishing locks the pack. |
+
+#### Key Differences from Capability Packs
+
+| Aspect | Capability Pack | Skill Pack |
+|---|---|---|
+| Primary key | `key@version` (string) | `key@version` (string) |
+| References | `capability_ids: List[cap.*]` | `skill_ids: List[sk.*]` |
+| Playbooks | `playbooks: List[Playbook]` (plural, each with id/name/description) | `playbook: SkillPlaybook` (singular) |
+| Step structure | `{id, name, description, capability_id, ...}` | `{skill_id}` only |
+| Executed by | Python conductor-service | TypeScript Astra Agent |
+
+---
+
 ### Putting It All Together
 
 In ASTRA’s architecture:
 
 - Artifact-kinds define what can be produced
-- Capabilities define how to produce them
-- Capability Packs define why and when to produce them
+- Capabilities define how to produce them (server-side, conductor-orchestrated)
+- Capability Packs define why and when to produce them (playbook-driven runs)
+- Skills define how to produce them (client-side, Astra Agent–driven)
+- Skill Packs define why and when to produce them in a conversational session
 
-A capability pack is therefore the strategic layer on top of ASTRA’s primitives:
+The capability path and skill path are two parallel execution tracks sharing the same artifact-kind contract:
 
- ***"It transforms a library of discrete capabilities into an intentional, orchestrated, end-to-end solution—without changing the platform’s code."***
+```
+User Intent
+  ├── Planner Service  →  Capability Pack  →  Conductor Service  →  Artifacts (cam.*)
+  └── Astra Agent      →  Skill Pack       →  Skills (sk.*)      →  Artifacts (cam.*)
+```
+
+A capability pack is therefore the strategic layer on top of ASTRA’s server-side primitives, and a skill pack is the equivalent layer for the Astra Agent’s conversational execution model:
+
+ ***"Both transform a library of discrete execution units into an intentional, orchestrated, end-to-end solution—without changing the platform’s code."***
 
 ## Advantages and Usefulness of ASTRA
 
@@ -608,3 +697,108 @@ Accepts a `RegisterRequest` (the full `CapabilityOnboardingDoc` with `status="in
 - **AuthSpec uses env-var aliases, not raw secrets** — `alias_token`, `alias_key`, etc. are environment variable *names*; the service resolves them via `os.getenv` at connection time. Secrets never appear in API payloads.
 - **Minimal kind registration** — new artifact kinds are created with an open schema (`additionalProperties: true`) so they can immediately be used by the capability without requiring a full kind definition upfront. Kind authors can refine the schema later.
 - **ConfigForge for LLM config** — matching conductor-service, all LLM provider details and API keys are stored in ConfigForge and referenced by a canonical string (`ONBOARDING_LLM_CONFIG_REF`). The service never holds raw LLM credentials.
+
+---
+
+### Skill Registry Service
+
+The skill-registry-service is the authoritative store for all `sk.*` Skills and Skill Packs (port **9028**). It is the skill-path counterpart to capability-service and serves the same structural role — CRUD operations, lifecycle management, and a manifest endpoint consumed by the Astra Agent at startup.
+
+#### Responsibilities
+
+- **Skill CRUD and search:** Create, retrieve, update, delete, and search skills by tag, produced kind, execution mode, status, or free-text query. Batch fetch by names (`POST /skill/by-names`) is supported for pack resolution.
+
+- **Skill Pack management:** Create, list, retrieve, patch, and delete skill packs. Publishing a pack (`POST /skill-pack/{pack_id}/publish`) sets `status=published`, records `published_at`, and makes the pack available for Astra Agent execution.
+
+- **Skill manifest:** `GET /manifest/skills` returns all `published` skills as a typed list with a `generated_at` timestamp and count. The Astra Agent calls this endpoint at startup to build its tool registry — the manifest is the bridge between the skill store and the agent's in-process tool execution.
+
+#### API Summary
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/skill/search` | Search skills by tag, produces_kind, mode, status, q |
+| `POST` | `/skill/by-names` | Batch fetch skills by name list |
+| `POST` | `/skill` | Create a new skill |
+| `GET` | `/skill/{name}` | Get skill by `sk.*` name |
+| `PUT` | `/skill/{name}` | Full replace |
+| `PATCH` | `/skill/{name}` | Partial update |
+| `DELETE` | `/skill/{name}` | Delete |
+| `GET` | `/skill-pack` | List skill packs |
+| `POST` | `/skill-pack` | Create skill pack |
+| `GET` | `/skill-pack/{pack_id}` | Get skill pack |
+| `PATCH` | `/skill-pack/{pack_id}` | Update skill pack |
+| `DELETE` | `/skill-pack/{pack_id}` | Delete skill pack |
+| `POST` | `/skill-pack/{pack_id}/publish` | Publish (lock) skill pack |
+| `GET` | `/manifest/skills` | All published skills for Astra Agent |
+
+Note: `/skill/search` and `/skill/by-names` are declared before `/{name:path}` in the router to prevent route shadowing of the `sk.*` dot-notation names.
+
+#### Seed Data
+
+The service seeds skills and skill packs on startup from five seed modules, each controlled by an environment flag:
+
+| Env flag | Default | Seeds |
+|---|---|---|
+| `SEED_SKILLS` | `1` | Core diagram skills (`sk.diagram.generate_arch`, `sk.diagram.mermaid`) |
+| `SEED_SKILLS_DATA_PIPELINE` | `1` | 21 data pipeline skills (asset fetch + LLM discovery skills) |
+| `SEED_SKILLS_MICROSERVICES` | `1` | 13 microservices skills (domain, bounded context, tech stack, etc.) |
+| `SEED_SKILL_PACKS_DATA_PIPELINE` | `1` | `data-pipeline-arch@v1.0` and `data-pipeline-arch@v1.1` |
+| `SEED_SKILL_PACKS_MICROSERVICES` | `1` | `raina-microservices-arch@v1.0.0` |
+| `SKILL_PACK_SEED_PUBLISH` | `1` | Auto-publish all seeded packs on first boot |
+
+Seeds are idempotent: existing skills are skipped by name (unique index), and packs are skipped by composite `key@version` id.
+
+#### Events
+
+The service publishes RabbitMQ events after mutations using routing keys in the `astra.skill-registry.*` namespace:
+- `astra.skill-registry.skill.created.v1`
+- `astra.skill-registry.skill.updated.v1`
+- `astra.skill-registry.pack.published.v1`
+
+#### MongoDB Collections
+
+- `skills` — unique index on `name`; indexes on `tags`, `produces_kinds`, `status`, `execution.mode`
+- `skill_packs` — unique index on `_id` (`key@version`); indexes on `key`, `skill_ids`, `status`
+
+---
+
+### Session Service
+
+The session-svc (port **9029**) is a thin MongoDB-backed conversation history store purpose-built for the Astra Agent. It stores Anthropic SDK message arrays so the TypeScript Astra Agent can maintain stateful, multi-turn conversations across sessions without managing persistence itself.
+
+#### Responsibilities
+
+- **Session lifecycle:** Create sessions (with auto-generated or caller-supplied UUIDs), list sessions per workspace, retrieve full session state, and delete sessions.
+- **Message history:** Append messages to an existing session (`PATCH`) or replace the entire message history (`PUT`). The `messages` field stores native Anthropic SDK message format (`{role: "user"|"assistant", content: string | ContentBlock[]}`) — the service treats content as opaque and stores it as-is.
+
+#### API
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/sessions` | Create session; returns `session_id` |
+| `GET` | `/sessions?workspace_id=` | List sessions for a workspace |
+| `GET` | `/sessions/{session_id}` | Get session with all messages |
+| `PATCH` | `/sessions/{session_id}/messages` | Append messages to history |
+| `PUT` | `/sessions/{session_id}/messages` | Replace full message history |
+| `DELETE` | `/sessions/{session_id}` | Delete session |
+
+#### Data Model
+
+```
+SessionDocument
+  session_id: str          # UUID, primary key
+  workspace_id: str        # links session to an ASTRA workspace
+  messages: [              # Anthropic SDK message array
+    { role: "user"|"assistant", content: any }
+  ]
+  created_at: datetime
+  updated_at: datetime
+```
+
+The `PATCH /messages` endpoint uses MongoDB `$push / $each` to atomically append messages without loading the full document. `PUT /messages` replaces the array entirely.
+
+#### Design Notes
+
+- **Publish-only RabbitMQ** — the service connects to RabbitMQ for outbound event publishing only; it has no consumers and no workspace lifecycle dependency.
+- **Opaque content** — message `content` is stored as-is (string or structured block list). The service does not inspect, validate, or transform message content — that is the Astra Agent's responsibility.
+- **Workspace-scoped** — every session is associated with a `workspace_id`, enabling the agent and UI to list all sessions for a given workspace context.
