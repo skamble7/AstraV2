@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 class Settings(BaseModel):
     # App
-    app_name: str = "ASTRA Session Service"
+    app_name: str = "ASTRA Conversation Service"
     host: str = "0.0.0.0"
     port: int = 9029
 
@@ -18,7 +18,7 @@ class Settings(BaseModel):
     rabbitmq_exchange: str = os.getenv("RABBITMQ_EXCHANGE", "raina.events")
 
     events_org: str = os.getenv("EVENTS_ORG", "astra")
-    service_name: str = os.getenv("SERVICE_NAME", "session-svc")
+    service_name: str = os.getenv("SERVICE_NAME", "conversation-svc")
 
 
 settings = Settings()

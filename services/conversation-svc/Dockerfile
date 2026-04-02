@@ -16,10 +16,10 @@ COPY libs/astra-models /tmp/astra-models
 RUN pip install --no-cache-dir /tmp/astra-models
 
 # 3) Install service deps
-COPY services/session-svc/pyproject.toml /app/pyproject.toml
+COPY services/conversation-svc/pyproject.toml /app/pyproject.toml
 RUN pip install --no-cache-dir .
 
 # 4) Copy the service code
-COPY services/session-svc/app /app/app
+COPY services/conversation-svc/app /app/app
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "9029"]

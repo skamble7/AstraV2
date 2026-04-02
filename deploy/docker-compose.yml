@@ -240,21 +240,21 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-  astra-session-svc:
+  astra-conversation-svc:
     build:
       context: ..
-      dockerfile: services/session-svc/Dockerfile
-    container_name: astra-session-svc
+      dockerfile: services/conversation-svc/Dockerfile
+    container_name: astra-conversation-svc
     restart: unless-stopped
     env_file:
-      - ../services/session-svc/.env.example
+      - ../services/conversation-svc/.env.example
     environment:
       MONGO_URI: ${MONGO_URI:-mongodb://host.docker.internal:27017/}
       MONGO_DB: ${MONGO_DB:-astra}
       RABBITMQ_URI: ${RABBITMQ_URI:-amqp://raina:raina@host.docker.internal:5672/}
       RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-raina.events}
       EVENTS_ORG: ${EVENTS_ORG:-astra}
-      SERVICE_NAME: session-svc
+      SERVICE_NAME: conversation-svc
     ports:
       - "9029:9029"
     extra_hosts:

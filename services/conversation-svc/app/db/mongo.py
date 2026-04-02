@@ -22,6 +22,10 @@ def get_db() -> AsyncIOMotorDatabase:
 
 async def init_indexes() -> None:
     db = get_db()
-    await db.sessions.create_index("session_id", unique=True)
-    await db.sessions.create_index("workspace_id")
-    await db.sessions.create_index("created_at")
+    await db.conversations.create_index("conversation_id", unique=True)
+    await db.conversations.create_index("workspace_id")
+    await db.conversations.create_index("created_at")
+    await db.conversations.create_index(
+        [("workspace_id", 1), ("user_id", 1), ("updated_at", -1)]
+    )
+    await db.conversations.create_index("deleted_at", sparse=True)

@@ -11,7 +11,7 @@ from app.logging_conf import setup_logging
 from app.middleware import add_cors, install_request_logging, add_error_handlers
 from app.db.mongo import init_indexes
 from app.events import get_bus
-from app.routers import health_router, session_router
+from app.routers import health_router, conversation_router
 
 logger = logging.getLogger("app")
 
@@ -48,7 +48,7 @@ install_request_logging(app)
 add_error_handlers(app)
 
 app.include_router(health_router)
-app.include_router(session_router)
+app.include_router(conversation_router)
 
 
 @app.get("/")
